@@ -117,11 +117,13 @@ func subscribeToRabbit() {
 
 	go func() {
 		for d := range msgs {
-			log.Printf(" [a] %s", d.Body)
+			//log.Printf(" [a] %s", d.Body)
 			var packet types.TtnMapperUplinkMessage
 			if err := json.Unmarshal(d.Body, &packet); err != nil {
-				log.Print(err.Error())
+				log.Print(" [a] " + err.Error())
+				continue
 			}
+			log.Print(" [a] Packet received")
 			messageChannel <- packet
 		}
 	}()
@@ -168,8 +170,7 @@ func insertToMysql() {
 
 	for {
 		message := <-messageChannel
-		log.Printf(" [m] Packet received")
-		log.Print(message)
+		log.Printf(" [m] Processing packet")
 
 		for _, gateway := range message.Metadata.Gateways {
 			entry := messageToEntry(message, gateway)
@@ -187,7 +188,7 @@ func insertToMysql() {
 					log.Print(err.Error())
 				}
 
-				log.Printf("Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
+				log.Printf("  [m] Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
 
 			}
 		}
