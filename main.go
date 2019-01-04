@@ -5,10 +5,14 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"os"
-
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/streadway/amqp"
 	"log"
+	"net/http"
+	"os"
+	"time"
 	"ttnmapper-mysql-insert-raw/types"
 )
 
@@ -25,6 +29,8 @@ type Configuration struct {
 	MysqlUser     string
 	MysqlPassword string
 	MysqlDatabase string
+
+	PromethuesPort string
 }
 
 var myConfiguration = Configuration{
@@ -38,18 +44,36 @@ var myConfiguration = Configuration{
 	MysqlUser:     "user",
 	MysqlPassword: "password",
 	MysqlDatabase: "database",
+
+	PromethuesPort: "2112",
 }
+
+var (
+	dbInserts = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ttnmapper_mysql_inserts_raw_count",
+		Help: "The total number of packets inserted into the raw table",
+	})
+
+	inserDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ttnmapper_mysql_inserts_raw_duration",
+		Help:    "How long the processing and insert of a packet takes",
+		Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 5, 10, 100, 1000, 10000},
+	})
+)
 
 func main() {
 
 	file, _ := os.Open("conf.json")
-	defer file.Close()
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(&myConfiguration)
 	if err != nil {
-		fmt.Println("error:", err)
+		fmt.Println("json error:", err)
 	}
 	log.Printf("Using configuration: %+v", myConfiguration) // output: [UserA, UserB]
+	file.Close()
+
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe("127.0.0.1:"+myConfiguration.PromethuesPort, nil)
 
 	// Start hread to handle MySQL inserts
 	go insertToMysql()
@@ -173,6 +197,7 @@ func insertToMysql() {
 		log.Printf(" [m] Processing packet")
 
 		for _, gateway := range message.Metadata.Gateways {
+			gatewayStart := time.Now()
 			entry := messageToEntry(message, gateway)
 			result, err := stmtIns.Exec(entry)
 			if err != nil {
@@ -189,8 +214,10 @@ func insertToMysql() {
 				}
 
 				log.Printf("  [m] Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
-
+				dbInserts.Inc()
 			}
+			gatewayElapsed := time.Since(gatewayStart)
+			inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
 		}
 
 	}
