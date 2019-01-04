@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/prometheus/client_golang/prometheus"
@@ -63,17 +62,28 @@ var (
 
 func main() {
 
-	file, _ := os.Open("conf.json")
-	decoder := json.NewDecoder(file)
-	err := decoder.Decode(&myConfiguration)
+	file, err := os.Open("conf.json")
 	if err != nil {
-		fmt.Println("json error:", err)
+		log.Print(err.Error())
+	}
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&myConfiguration)
+	if err != nil {
+		log.Print(err.Error())
+	}
+	err = file.Close()
+	if err != nil {
+		log.Print(err.Error())
 	}
 	log.Printf("Using configuration: %+v", myConfiguration) // output: [UserA, UserB]
-	file.Close()
 
 	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe("127.0.0.1:"+myConfiguration.PromethuesPort, nil)
+	go func() {
+		err := http.ListenAndServe("127.0.0.1:"+myConfiguration.PromethuesPort, nil)
+		if err != nil {
+			log.Print(err.Error())
+		}
+	}()
 
 	// Start hread to handle MySQL inserts
 	go insertToMysql()
