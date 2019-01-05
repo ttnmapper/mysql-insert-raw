@@ -15,7 +15,7 @@ import (
 	"ttnmapper-mysql-insert-raw/types"
 )
 
-var messageChannel = make(chan types.TtnMapperUplinkMessage, 100)
+var messageChannel = make(chan types.TtnMapperUplinkMessage)
 
 type Configuration struct {
 	AmqpHost     string
