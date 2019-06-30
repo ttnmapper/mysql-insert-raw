@@ -2,15 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/streadway/amqp"
+	"github.com/tkanos/gonfig"
 	"log"
 	"net/http"
-	"os"
 	"time"
 	"ttnmapper-mysql-insert-raw/types"
 )
@@ -29,7 +30,9 @@ type Configuration struct {
 	MysqlPassword string
 	MysqlDatabase string
 
-	PromethuesPort string
+	PrometheusPort string
+
+	UseOldDbSchema bool
 }
 
 var myConfiguration = Configuration{
@@ -44,7 +47,9 @@ var myConfiguration = Configuration{
 	MysqlPassword: "password",
 	MysqlDatabase: "database",
 
-	PromethuesPort: "2112",
+	PrometheusPort: "9090",
+
+	UseOldDbSchema: false,
 }
 
 var (
@@ -62,34 +67,31 @@ var (
 
 func main() {
 
-	file, err := os.Open("conf.json")
+	err := gonfig.GetConf("conf.json", &myConfiguration)
 	if err != nil {
-		log.Print(err.Error())
+		fmt.Println(err)
 	}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&myConfiguration)
-	if err != nil {
-		log.Print(err.Error())
-	}
-	err = file.Close()
-	if err != nil {
-		log.Print(err.Error())
-	}
-	log.Printf("Using configuration: %+v", myConfiguration) // output: [UserA, UserB]
+
+	log.Printf("[Configuration]\n%s\n", prettyPrint(myConfiguration)) // output: [UserA, UserB]
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err := http.ListenAndServe("127.0.0.1:"+myConfiguration.PromethuesPort, nil)
+		err := http.ListenAndServe("127.0.0.1:"+myConfiguration.PrometheusPort, nil)
 		if err != nil {
 			log.Print(err.Error())
 		}
 	}()
 
-	// Start hread to handle MySQL inserts
+	// Start thread to handle MySQL inserts
 	go insertToMysql()
 
 	// Start amqp listener on this thread - blocking function
 	subscribeToRabbit()
+}
+
+func prettyPrint(i interface{}) string {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	return string(s)
 }
 
 func failOnError(err error, msg string) {
@@ -233,8 +235,8 @@ func insertToMysql() {
 	}
 }
 
-func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.GatewayMetadata) types.MysqlEntry {
-	var entry = types.MysqlEntry{}
+func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.GatewayMetadata) types.MysqlRawPacket {
+	var entry = types.MysqlRawPacket{}
 
 	//if gateway.Time != types.BuildTime(0) {
 	//	entry.Time = gateway.Time

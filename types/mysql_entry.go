@@ -2,7 +2,7 @@ package types
 
 import "time"
 
-type MysqlEntry struct {
+type MysqlRawPacket struct {
 	Id   int       `db:"id"`
 	Time time.Time `db:"time"`
 
