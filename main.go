@@ -12,6 +12,7 @@ import (
 	"github.com/tkanos/gonfig"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 	"ttnmapper-mysql-insert-raw/types"
 )
@@ -186,52 +187,153 @@ func insertToMysql() {
 	// executing
 	defer db.Close()
 
-	// Prepare statement for inserting data
-	stmtIns, err := db.PrepareNamed("INSERT INTO packets " +
-		"(time, dev_id, app_id, gtw_id, modulation, " +
-		"datarate, bitrate, coding_rate, snr, rssi, " +
-		"frequency, latitude, longitude, altitude, accuracy," +
-		"hdop, satellites, accuracy_source, user_agent," +
-		"user_id, deleted, experiment, experiment_name) " +
-		"VALUES " +
-		"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-		":datarate, :bitrate, :coding_rate, :snr, :rssi, " +
-		":frequency, :latitude, :longitude, :altitude, :accuracy," +
-		":hdop, :satellites, :accuracy_source, :user_agent," +
-		":user_id, :deleted, :experiment, :experiment_name)")
-	if err != nil {
-		panic(err.Error()) // proper error handling instead of panic in your app
-	}
-	defer stmtIns.Close() // Close the statement when we leave main() / the program terminates
+	if myConfiguration.UseOldDbSchema {
 
-	for {
-		message := <-messageChannel
-		log.Printf(" [m] Processing packet")
+		// Old database schema
+		stmtInsPackets, err := db.PrepareNamed("INSERT INTO packets " +
+			"(time, nodeaddr, appeui, gwaddr, modulation, " +
+			"datarate, snr, rssi, " +
+			"freq, lat, lon, alt, accuracy," +
+			"hdop, sats, provider, user_agent," +
+			"user_id) " +
+			"VALUES " +
+			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
+			":datarate, :snr, :rssi, " +
+			":frequency, :latitude, :longitude, :altitude, :accuracy," +
+			":hdop, :satellites, :accuracy_source, :user_agent," +
+			":user_id)")
+		if err != nil {
+			panic(err.Error()) // proper error handling instead of panic in your app
+		}
+		defer stmtInsPackets.Close() // Close the statement when we leave main() / the program terminates
 
-		for _, gateway := range message.Metadata.Gateways {
-			gatewayStart := time.Now()
-			entry := messageToEntry(message, gateway)
-			result, err := stmtIns.Exec(entry)
-			if err != nil {
-				log.Print(err.Error())
-			} else {
-				lastId, err := result.LastInsertId()
-				if err != nil {
-					log.Print(err.Error())
+		stmtInsExperiments, err := db.PrepareNamed("INSERT INTO packets " +
+			"(time, nodeaddr, appeui, gwaddr, modulation, " +
+			"datarate, snr, rssi, " +
+			"freq, lat, lon, alt, accuracy," +
+			"hdop, sats, provider, user_agent," +
+			"user_id, name) " +
+			"VALUES " +
+			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
+			":datarate, :snr, :rssi, " +
+			":frequency, :latitude, :longitude, :altitude, :accuracy," +
+			":hdop, :satellites, :accuracy_source, :user_agent," +
+			":user_id, :experiment_name)")
+		if err != nil {
+			panic(err.Error()) // proper error handling instead of panic in your app
+		}
+		defer stmtInsExperiments.Close() // Close the statement when we leave main() / the program terminates
+
+		for {
+			message := <-messageChannel
+			log.Printf(" [m] Processing packet")
+
+			for _, gateway := range message.Metadata.Gateways {
+				gatewayStart := time.Now()
+				entry := messageToEntry(message, gateway)
+
+				// Old schema needed the gateway id without the eui- prefix
+				if strings.HasPrefix(entry.GtwId, "eui-") {
+					entry.GtwId = strings.ToUpper(entry.GtwId[4:])
 				}
 
-				rowsAffected, err := result.RowsAffected()
-				if err != nil {
-					log.Print(err.Error())
+				if entry.Experiment {
+
+					result, err := stmtInsExperiments.Exec(entry)
+					if err != nil {
+						log.Print(err.Error())
+					} else {
+						lastId, err := result.LastInsertId()
+						if err != nil {
+							log.Print(err.Error())
+						}
+
+						rowsAffected, err := result.RowsAffected()
+						if err != nil {
+							log.Print(err.Error())
+						}
+
+						log.Printf("  [m] Inserted experiment packet id=%d (affected %d rows)", lastId, rowsAffected)
+						dbInserts.Inc()
+					}
+
+				} else {
+
+					result, err := stmtInsPackets.Exec(entry)
+					if err != nil {
+						log.Print(err.Error())
+					} else {
+						lastId, err := result.LastInsertId()
+						if err != nil {
+							log.Print(err.Error())
+						}
+
+						rowsAffected, err := result.RowsAffected()
+						if err != nil {
+							log.Print(err.Error())
+						}
+
+						log.Printf("  [m] Inserted raw packet id=%d (affected %d rows)", lastId, rowsAffected)
+						dbInserts.Inc()
+					}
+
 				}
 
-				log.Printf("  [m] Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
-				dbInserts.Inc()
+				gatewayElapsed := time.Since(gatewayStart)
+				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
 			}
-			gatewayElapsed := time.Since(gatewayStart)
-			inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+
 		}
 
+	} else {
+
+		// New database schema
+		stmtIns, err := db.PrepareNamed("INSERT INTO packets " +
+			"(time, dev_id, app_id, gtw_id, modulation, " +
+			"datarate, bitrate, coding_rate, snr, rssi, " +
+			"frequency, latitude, longitude, altitude, accuracy," +
+			"hdop, satellites, accuracy_source, user_agent," +
+			"user_id, deleted, experiment, experiment_name) " +
+			"VALUES " +
+			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
+			":datarate, :bitrate, :coding_rate, :snr, :rssi, " +
+			":frequency, :latitude, :longitude, :altitude, :accuracy," +
+			":hdop, :satellites, :accuracy_source, :user_agent," +
+			":user_id, :deleted, :experiment, :experiment_name)")
+		if err != nil {
+			panic(err.Error()) // proper error handling instead of panic in your app
+		}
+		defer stmtIns.Close() // Close the statement when we leave main() / the program terminates
+
+		for {
+			message := <-messageChannel
+			log.Printf(" [m] Processing packet")
+
+			for _, gateway := range message.Metadata.Gateways {
+				gatewayStart := time.Now()
+				entry := messageToEntry(message, gateway)
+				result, err := stmtIns.Exec(entry)
+				if err != nil {
+					log.Print(err.Error())
+				} else {
+					lastId, err := result.LastInsertId()
+					if err != nil {
+						log.Print(err.Error())
+					}
+
+					rowsAffected, err := result.RowsAffected()
+					if err != nil {
+						log.Print(err.Error())
+					}
+
+					log.Printf("  [m] Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
+					dbInserts.Inc()
+				}
+				gatewayElapsed := time.Since(gatewayStart)
+				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+			}
+
+		}
 	}
 }
 
