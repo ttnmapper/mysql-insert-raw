@@ -207,7 +207,7 @@ func insertToMysql() {
 		}
 		defer stmtInsPackets.Close() // Close the statement when we leave main() / the program terminates
 
-		stmtInsExperiments, err := db.PrepareNamed("INSERT INTO packets " +
+		stmtInsExperiments, err := db.PrepareNamed("INSERT INTO experiments " +
 			"(time, nodeaddr, appeui, gwaddr, modulation, " +
 			"datarate, snr, rssi, " +
 			"freq, lat, lon, alt, accuracy," +
