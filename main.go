@@ -20,20 +20,20 @@ import (
 var messageChannel = make(chan types.TtnMapperUplinkMessage)
 
 type Configuration struct {
-	AmqpHost     string
-	AmqpPort     string
-	AmqpUser     string
-	AmqpPassword string
+	AmqpHost     string `env:"AMQP_HOST"`
+	AmqpPort     string `env:"AMQP_PORT"`
+	AmqpUser     string `env:"AMQP_USER"`
+	AmqpPassword string `env:"AMQP_PASSWORD"`
 
-	MysqlHost     string
-	MysqlPort     string
-	MysqlUser     string
-	MysqlPassword string
-	MysqlDatabase string
+	MysqlHost     string `env:"MYSQL_HOST"`
+	MysqlPort     string `env:"MYSQL_PORT"`
+	MysqlUser     string `env:"MYSQL_USERNAME"`
+	MysqlPassword string `env:"MYSQL_PASSWORD"`
+	MysqlDatabase string `env:"MYSQL_DATABASE"`
 
-	PrometheusPort string
+	PrometheusPort string `env:"PROMETHEUS_PORT"`
 
-	UseOldDbSchema bool
+	UseOldDbSchema bool `env:"USE_OLD_DB_SCHEMA"`
 }
 
 var myConfiguration = Configuration{
