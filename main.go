@@ -77,7 +77,7 @@ func main() {
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err := http.ListenAndServe("127.0.0.1:"+myConfiguration.PrometheusPort, nil)
+		err := http.ListenAndServe(":"+myConfiguration.PrometheusPort, nil)
 		if err != nil {
 			log.Print(err.Error())
 		}
