@@ -18,7 +18,7 @@ import (
 	"ttnmapper-mysql-insert-raw/types"
 )
 
-var messageChannel = make(chan types.TtnMapperUplinkMessage)
+var messageChannel = make(chan amqp.Delivery)
 
 type Configuration struct {
 	AmqpHost     string `env:"AMQP_HOST"`
@@ -124,13 +124,20 @@ func subscribeToRabbit() {
 
 	q, err := ch.QueueDeclare(
 		"mysql_insert_raw", // name
-		false,              // durable
+		true,               // durable
 		false,              // delete when usused
 		false,              // exclusive
 		false,              // no-wait
 		nil,                // arguments
 	)
 	failOnError(err, "Failed to declare a queue")
+
+	err = ch.Qos(
+		10,    // prefetch count
+		0,     // prefetch size
+		false, // global
+	)
+	failOnError(err, "Failed to set queue QoS")
 
 	err = ch.QueueBind(
 		q.Name,        // queue name
@@ -143,7 +150,7 @@ func subscribeToRabbit() {
 	msgs, err := ch.Consume(
 		q.Name, // queue
 		"",     // consumer
-		true,   // auto-ack
+		false,  // auto-ack
 		false,  // exclusive
 		false,  // no-local
 		false,  // no-wait
@@ -155,14 +162,8 @@ func subscribeToRabbit() {
 
 	go func() {
 		for d := range msgs {
-			//log.Printf(" [a] %s", d.Body)
-			var packet types.TtnMapperUplinkMessage
-			if err := json.Unmarshal(d.Body, &packet); err != nil {
-				log.Print(" [a] " + err.Error())
-				continue
-			}
 			log.Print(" [a] Packet received")
-			messageChannel <- packet
+			messageChannel <- d
 		}
 	}()
 
@@ -226,8 +227,17 @@ func insertToMysql() {
 		defer stmtInsExperiments.Close() // Close the statement when we leave main() / the program terminates
 
 		for {
-			message := <-messageChannel
+			d := <-messageChannel
 			log.Printf(" [m] Processing packet")
+
+			//log.Printf(" [a] %s", d.Body)
+			var message types.TtnMapperUplinkMessage
+			if err := json.Unmarshal(d.Body, &message); err != nil {
+				log.Print(" [a] " + err.Error())
+				continue
+			}
+
+			insertFail := false
 
 			for _, gateway := range message.Gateways {
 				gatewayStart := time.Now()
@@ -243,6 +253,7 @@ func insertToMysql() {
 					result, err := stmtInsExperiments.Exec(entry)
 					if err != nil {
 						log.Print(err.Error())
+						insertFail = true
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
@@ -263,6 +274,7 @@ func insertToMysql() {
 					result, err := stmtInsPackets.Exec(entry)
 					if err != nil {
 						log.Print(err.Error())
+						insertFail = true
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
@@ -275,13 +287,19 @@ func insertToMysql() {
 						}
 
 						log.Printf("  [m] Inserted raw packet id=%d (affected %d rows)", lastId, rowsAffected)
-						dbInserts.Inc()
 					}
 
 				}
 
 				gatewayElapsed := time.Since(gatewayStart)
 				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+			}
+
+			if insertFail {
+				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
+				d.Nack(false, true)
+			} else {
+				d.Ack(false)
 			}
 
 		}
@@ -307,8 +325,16 @@ func insertToMysql() {
 		defer stmtIns.Close() // Close the statement when we leave main() / the program terminates
 
 		for {
-			message := <-messageChannel
+			d := <-messageChannel
 			log.Printf(" [m] Processing packet")
+
+			var message types.TtnMapperUplinkMessage
+			if err := json.Unmarshal(d.Body, &message); err != nil {
+				log.Print(" [a] " + err.Error())
+				continue
+			}
+
+			insertFail := false
 
 			for _, gateway := range message.Gateways {
 				gatewayStart := time.Now()
@@ -316,6 +342,7 @@ func insertToMysql() {
 				result, err := stmtIns.Exec(entry)
 				if err != nil {
 					log.Print(err.Error())
+					insertFail = true
 				} else {
 					lastId, err := result.LastInsertId()
 					if err != nil {
@@ -332,6 +359,13 @@ func insertToMysql() {
 				}
 				gatewayElapsed := time.Since(gatewayStart)
 				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+			}
+
+			if insertFail {
+				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
+				d.Nack(false, true)
+			} else {
+				d.Ack(false)
 			}
 
 		}
