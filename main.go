@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/shopspring/decimal"
 	"github.com/streadway/amqp"
 	"github.com/tkanos/gonfig"
 	"log"
@@ -228,7 +229,7 @@ func insertToMysql() {
 			message := <-messageChannel
 			log.Printf(" [m] Processing packet")
 
-			for _, gateway := range message.Metadata.Gateways {
+			for _, gateway := range message.Gateways {
 				gatewayStart := time.Now()
 				entry := messageToEntry(message, gateway)
 
@@ -309,7 +310,7 @@ func insertToMysql() {
 			message := <-messageChannel
 			log.Printf(" [m] Processing packet")
 
-			for _, gateway := range message.Metadata.Gateways {
+			for _, gateway := range message.Gateways {
 				gatewayStart := time.Now()
 				entry := messageToEntry(message, gateway)
 				result, err := stmtIns.Exec(entry)
@@ -337,7 +338,7 @@ func insertToMysql() {
 	}
 }
 
-func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.GatewayMetadata) types.MysqlRawPacket {
+func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMapperGateway) types.MysqlRawPacket {
 	var entry = types.MysqlRawPacket{}
 
 	//if gateway.Time != types.BuildTime(0) {
@@ -345,34 +346,43 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.GatewayM
 	//} else {
 	//	entry.Time = message.Metadata.Time
 	//}
-	entry.Time = message.Metadata.Time.GetTime() // Do not trust gateway time - always use server time
+	seconds := message.Time / 1000000000
+	nanos := message.Time % 1000000000
+	entry.Time = time.Unix(seconds, nanos)
 
 	entry.AppId = message.AppID
 	entry.DevId = message.DevID
-	entry.GtwId = gateway.GtwID
 
-	entry.Modulation = message.Metadata.Modulation
-	entry.DataRate = message.Metadata.DataRate
-	entry.Bitrate = message.Metadata.Bitrate
-	entry.CodingRate = message.Metadata.CodingRate
+	if gateway.GatewayEui != "" {
+		entry.GtwId = gateway.GatewayEui
+	} else {
+		entry.GtwId = gateway.GatewayId
+	}
 
-	entry.Frequency = message.Metadata.Frequency
-	entry.RSSI = gateway.RSSI
-	entry.SNR = gateway.SNR
+	entry.Modulation = message.Modulation
+	entry.DataRate = fmt.Sprintf("SF%dBW%d", message.SpreadingFactor, message.Bandwidth/1000)
+	entry.Bitrate = uint32(message.Bitrate)
+	entry.CodingRate = message.CodingRate
 
-	entry.Latitude = message.TtnMLatitude
-	entry.Longitude = message.TtnMLongitude
-	entry.Altitude = message.TtnMAltitude
-	entry.Hdop = message.TtnMHdop
-	entry.Accuracy = message.TtnMAccuracy
-	entry.Satellites = message.TtnMSatellites
-	entry.AccuracySource = message.TtnMProvider
+	frequency := decimal.NewFromInt(int64(message.Frequency))
+	frequency = frequency.Div(decimal.NewFromInt(1000000))
+	entry.Frequency = frequency
+	entry.RSSI = gateway.Rssi
+	entry.SNR = gateway.Snr
 
-	entry.UserAgent = message.TtnMUserAgent
-	entry.UserId = message.TtnMUserId
+	entry.Latitude = message.Latitude
+	entry.Longitude = message.Longitude
+	entry.Altitude = message.Altitude
+	entry.Hdop = message.Hdop
+	entry.Accuracy = message.AccuracyMeters
+	entry.Satellites = message.Satellites
+	entry.AccuracySource = message.AccuracySource
+
+	entry.UserAgent = message.UserAgent
+	entry.UserId = message.UserId
 	entry.Deleted = false
 
-	entry.ExperimentName = message.TtnMExperiment
+	entry.ExperimentName = message.Experiment
 	if entry.ExperimentName == "" {
 		entry.Experiment = false
 	} else {

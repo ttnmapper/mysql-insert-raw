@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"github.com/shopspring/decimal"
+	"time"
+)
 
 type MysqlRawPacket struct {
 	Id   int       `db:"id"`
@@ -15,9 +18,9 @@ type MysqlRawPacket struct {
 	Bitrate    uint32 `db:"bitrate"`
 	CodingRate string `db:"coding_rate"`
 
-	SNR       float32 `db:"snr"`
-	RSSI      float32 `db:"rssi"`
-	Frequency float32 `db:"frequency"`
+	SNR       float32         `db:"snr"`
+	RSSI      float32         `db:"rssi"`
+	Frequency decimal.Decimal `db:"frequency"`
 
 	Latitude       float64 `db:"latitude"`
 	Longitude      float64 `db:"longitude"`
