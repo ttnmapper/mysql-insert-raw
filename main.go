@@ -230,7 +230,7 @@ func insertToMysql() {
 			d := <-messageChannel
 			log.Printf(" [m] Processing packet")
 
-			//log.Printf(" [a] %s", d.Body)
+			log.Printf(" [a] %s", d.Body)
 			var message types.TtnMapperUplinkMessage
 			if err := json.Unmarshal(d.Body, &message); err != nil {
 				log.Print(" [a] " + err.Error())
@@ -252,16 +252,19 @@ func insertToMysql() {
 
 					result, err := stmtInsExperiments.Exec(entry)
 					if err != nil {
+						log.Printf("  [m] Error in query")
 						log.Print(err.Error())
 						insertFail = true
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
+							log.Printf("  [m] Error in insert id")
 							log.Print(err.Error())
 						}
 
 						rowsAffected, err := result.RowsAffected()
 						if err != nil {
+							log.Printf("  [m] Error in rows affected")
 							log.Print(err.Error())
 						}
 
@@ -273,16 +276,19 @@ func insertToMysql() {
 
 					result, err := stmtInsPackets.Exec(entry)
 					if err != nil {
+						log.Printf("  [m] Error in query")
 						log.Print(err.Error())
 						insertFail = true
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
+							log.Printf("  [m] Error in insert id")
 							log.Print(err.Error())
 						}
 
 						rowsAffected, err := result.RowsAffected()
 						if err != nil {
+							log.Printf("  [m] Error in rows affected")
 							log.Print(err.Error())
 						}
 
