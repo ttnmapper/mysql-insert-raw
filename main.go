@@ -8,10 +8,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/shopspring/decimal"
 	"github.com/streadway/amqp"
 	"github.com/tkanos/gonfig"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -398,9 +398,11 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	entry.Bitrate = uint32(message.Bitrate)
 	entry.CodingRate = message.CodingRate
 
-	frequency := decimal.NewFromInt(int64(message.Frequency))
-	frequency = frequency.Div(decimal.NewFromInt(1000000))
+	frequency := float64(message.Frequency)
+	frequency = frequency / 1000
+	frequency = math.Round(frequency) / 1000
 	entry.Frequency = frequency
+	//log.Printf("Freq: %.4f", entry.Frequency)
 	entry.RSSI = gateway.Rssi
 	entry.SNR = gateway.Snr
 
