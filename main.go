@@ -409,7 +409,8 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	entry.Latitude = message.Latitude
 	entry.Longitude = message.Longitude
 	entry.Altitude = message.Altitude
-	entry.Hdop = message.Hdop
+	hdop := math.Round(message.Hdop*10) / 10
+	entry.Hdop = hdop
 	entry.Accuracy = message.AccuracyMeters
 	entry.Satellites = message.Satellites
 	entry.AccuracySource = message.AccuracySource
