@@ -230,7 +230,7 @@ func insertToMysql() {
 			d := <-messageChannel
 			log.Printf(" [m] Processing packet")
 
-			log.Printf(" [a] %s", d.Body)
+			//log.Printf(" [a] %s", d.Body)
 			var message types.TtnMapperUplinkMessage
 			if err := json.Unmarshal(d.Body, &message); err != nil {
 				log.Print(" [a] " + err.Error())
@@ -302,7 +302,7 @@ func insertToMysql() {
 			}
 
 			if insertFail {
-				prettyPrint(message)
+				log.Println(prettyPrint(message))
 				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
 				d.Nack(false, true)
 			} else {
@@ -418,6 +418,7 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	entry.Altitude = message.Altitude
 	hdop := math.Round(message.Hdop*10) / 10
 	hdop = math.Min(hdop, 99.9)
+
 	entry.Hdop = hdop
 	entry.Accuracy = message.AccuracyMeters
 	entry.Satellites = message.Satellites
