@@ -254,7 +254,12 @@ func insertToMysql() {
 					if err != nil {
 						log.Printf("  [m] Error in query")
 						log.Print(err.Error())
-						insertFail = true
+						if strings.HasPrefix(err.Error(), "Error 1264:") {
+							// Column out of range
+							insertFail = false
+						} else {
+							insertFail = true
+						}
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
@@ -278,7 +283,12 @@ func insertToMysql() {
 					if err != nil {
 						log.Printf("  [m] Error in query")
 						log.Print(err.Error())
-						insertFail = true
+						if strings.HasPrefix(err.Error(), "Error 1264:") {
+							// Column out of range
+							insertFail = false
+						} else {
+							insertFail = true
+						}
 					} else {
 						lastId, err := result.LastInsertId()
 						if err != nil {
