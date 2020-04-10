@@ -302,6 +302,7 @@ func insertToMysql() {
 			}
 
 			if insertFail {
+				log.Printf(" [a] %s", d.Body)
 				log.Println(prettyPrint(message))
 				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
 				d.Nack(false, true)
@@ -416,10 +417,12 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	entry.Latitude = message.Latitude
 	entry.Longitude = message.Longitude
 	entry.Altitude = message.Altitude
-	hdop := math.Round(message.Hdop*10) / 10
-	hdop = math.Min(hdop, 99.9)
 
-	entry.Hdop = hdop
+	//hdop := math.Round(message.Hdop*10) / 10
+	//hdop = math.Min(hdop, 99.0)
+	//entry.Hdop = hdop
+	entry.Hdop = message.Hdop
+
 	entry.Accuracy = message.AccuracyMeters
 	entry.Satellites = message.Satellites
 	entry.AccuracySource = message.AccuracySource
