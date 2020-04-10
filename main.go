@@ -296,6 +296,7 @@ func insertToMysql() {
 			}
 
 			if insertFail {
+				prettyPrint(message)
 				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
 				d.Nack(false, true)
 			} else {
