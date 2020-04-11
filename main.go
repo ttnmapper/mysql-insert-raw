@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -33,8 +34,6 @@ type Configuration struct {
 	MysqlDatabase string `env:"MYSQL_DATABASE"`
 
 	PrometheusPort string `env:"PROMETHEUS_PORT"`
-
-	UseOldDbSchema bool `env:"USE_OLD_DB_SCHEMA"`
 }
 
 var myConfiguration = Configuration{
@@ -50,8 +49,6 @@ var myConfiguration = Configuration{
 	MysqlDatabase: "database",
 
 	PrometheusPort: "9090",
-
-	UseOldDbSchema: false,
 }
 
 var (
@@ -185,207 +182,104 @@ func insertToMysql() {
 		panic(err.Error()) // proper error handling instead of panic in your app
 	}
 
-	// defer the close till after the main function has finished
-	// executing
+	// defer the close till after the main function has finished executing
 	defer db.Close()
 
-	if myConfiguration.UseOldDbSchema {
+	stmtInsPackets, err := db.PrepareNamed("INSERT INTO packets " +
+		"(time, nodeaddr, appeui, gwaddr, modulation, " +
+		"datarate, snr, rssi, " +
+		"freq, lat, lon, alt, accuracy," +
+		"hdop, sats, provider, user_agent," +
+		"user_id) " +
+		"VALUES " +
+		"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
+		":datarate, :snr, :rssi, " +
+		":frequency, :latitude, :longitude, :altitude, :accuracy," +
+		":hdop, :satellites, :accuracy_source, :user_agent," +
+		":user_id)")
+	if err != nil {
+		panic(err.Error()) // proper error handling instead of panic in your app
+	}
+	defer stmtInsPackets.Close() // Close the statement when we leave main() / the program terminates
 
-		// Old database schema
-		stmtInsPackets, err := db.PrepareNamed("INSERT INTO packets " +
-			"(time, nodeaddr, appeui, gwaddr, modulation, " +
-			"datarate, snr, rssi, " +
-			"freq, lat, lon, alt, accuracy," +
-			"hdop, sats, provider, user_agent," +
-			"user_id) " +
-			"VALUES " +
-			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-			":datarate, :snr, :rssi, " +
-			":frequency, :latitude, :longitude, :altitude, :accuracy," +
-			":hdop, :satellites, :accuracy_source, :user_agent," +
-			":user_id)")
-		if err != nil {
-			panic(err.Error()) // proper error handling instead of panic in your app
+	stmtInsExperiments, err := db.PrepareNamed("INSERT INTO experiments " +
+		"(time, nodeaddr, appeui, gwaddr, modulation, " +
+		"datarate, snr, rssi, " +
+		"freq, lat, lon, alt, accuracy," +
+		"hdop, sats, provider, user_agent," +
+		"user_id, name) " +
+		"VALUES " +
+		"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
+		":datarate, :snr, :rssi, " +
+		":frequency, :latitude, :longitude, :altitude, :accuracy," +
+		":hdop, :satellites, :accuracy_source, :user_agent," +
+		":user_id, :experiment_name)")
+	if err != nil {
+		panic(err.Error()) // proper error handling instead of panic in your app
+	}
+	defer stmtInsExperiments.Close() // Close the statement when we leave main() / the program terminates
+
+	for {
+		d := <-messageChannel
+		log.Printf(" [m] Processing packet")
+
+		var message types.TtnMapperUplinkMessage
+		if err := json.Unmarshal(d.Body, &message); err != nil {
+			log.Print(" [a] " + err.Error())
+			continue
 		}
-		defer stmtInsPackets.Close() // Close the statement when we leave main() / the program terminates
 
-		stmtInsExperiments, err := db.PrepareNamed("INSERT INTO experiments " +
-			"(time, nodeaddr, appeui, gwaddr, modulation, " +
-			"datarate, snr, rssi, " +
-			"freq, lat, lon, alt, accuracy," +
-			"hdop, sats, provider, user_agent," +
-			"user_id, name) " +
-			"VALUES " +
-			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-			":datarate, :snr, :rssi, " +
-			":frequency, :latitude, :longitude, :altitude, :accuracy," +
-			":hdop, :satellites, :accuracy_source, :user_agent," +
-			":user_id, :experiment_name)")
-		if err != nil {
-			panic(err.Error()) // proper error handling instead of panic in your app
-		}
-		defer stmtInsExperiments.Close() // Close the statement when we leave main() / the program terminates
+		shouldRetry := false
 
-		for {
-			d := <-messageChannel
-			log.Printf(" [m] Processing packet")
+		for _, gateway := range message.Gateways {
+			gatewayStart := time.Now()
+			entry := messageToEntry(message, gateway)
 
-			//log.Printf(" [a] %s", d.Body)
-			var message types.TtnMapperUplinkMessage
-			if err := json.Unmarshal(d.Body, &message); err != nil {
-				log.Print(" [a] " + err.Error())
-				continue
+			if strings.HasPrefix(entry.GtwId, "eui-") {
+				entry.GtwId = strings.ToUpper(entry.GtwId[4:])
 			}
 
-			insertFail := false
-
-			for _, gateway := range message.Gateways {
-				gatewayStart := time.Now()
-				entry := messageToEntry(message, gateway)
-
-				// Old schema needed the gateway id without the eui- prefix
-				if strings.HasPrefix(entry.GtwId, "eui-") {
-					entry.GtwId = strings.ToUpper(entry.GtwId[4:])
-				}
-
-				if entry.Experiment {
-
-					result, err := stmtInsExperiments.Exec(entry)
-					if err != nil {
-						log.Printf("  [m] Error in query")
-						log.Print(err.Error())
-						if strings.HasPrefix(err.Error(), "Error 1264:") {
-							// Column out of range
-							insertFail = false
-						} else {
-							insertFail = true
-						}
-					} else {
-						lastId, err := result.LastInsertId()
-						if err != nil {
-							log.Printf("  [m] Error in insert id")
-							log.Print(err.Error())
-						}
-
-						rowsAffected, err := result.RowsAffected()
-						if err != nil {
-							log.Printf("  [m] Error in rows affected")
-							log.Print(err.Error())
-						}
-
-						log.Printf("  [m] Inserted experiment packet id=%d (affected %d rows)", lastId, rowsAffected)
-						dbInserts.Inc()
-					}
-
-				} else {
-
-					result, err := stmtInsPackets.Exec(entry)
-					if err != nil {
-						log.Printf("  [m] Error in query")
-						log.Print(err.Error())
-						if strings.HasPrefix(err.Error(), "Error 1264:") {
-							// Column out of range
-							insertFail = false
-						} else {
-							insertFail = true
-						}
-					} else {
-						lastId, err := result.LastInsertId()
-						if err != nil {
-							log.Printf("  [m] Error in insert id")
-							log.Print(err.Error())
-						}
-
-						rowsAffected, err := result.RowsAffected()
-						if err != nil {
-							log.Printf("  [m] Error in rows affected")
-							log.Print(err.Error())
-						}
-
-						log.Printf("  [m] Inserted raw packet id=%d (affected %d rows)", lastId, rowsAffected)
-					}
-
-				}
-
-				gatewayElapsed := time.Since(gatewayStart)
-				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
-			}
-
-			if insertFail {
-				log.Printf(" [a] %s", d.Body)
-				log.Println(prettyPrint(message))
-				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
-				d.Nack(false, true)
+			var result sql.Result
+			var err error
+			if entry.Experiment {
+				result, err = stmtInsExperiments.Exec(entry)
 			} else {
-				d.Ack(false)
+				result, err = stmtInsPackets.Exec(entry)
 			}
 
-		}
-
-	} else {
-
-		// New database schema
-		stmtIns, err := db.PrepareNamed("INSERT INTO packets " +
-			"(time, dev_id, app_id, gtw_id, modulation, " +
-			"datarate, bitrate, coding_rate, snr, rssi, " +
-			"frequency, latitude, longitude, altitude, accuracy," +
-			"hdop, satellites, accuracy_source, user_agent," +
-			"user_id, deleted, experiment, experiment_name) " +
-			"VALUES " +
-			"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-			":datarate, :bitrate, :coding_rate, :snr, :rssi, " +
-			":frequency, :latitude, :longitude, :altitude, :accuracy," +
-			":hdop, :satellites, :accuracy_source, :user_agent," +
-			":user_id, :deleted, :experiment, :experiment_name)")
-		if err != nil {
-			panic(err.Error()) // proper error handling instead of panic in your app
-		}
-		defer stmtIns.Close() // Close the statement when we leave main() / the program terminates
-
-		for {
-			d := <-messageChannel
-			log.Printf(" [m] Processing packet")
-
-			var message types.TtnMapperUplinkMessage
-			if err := json.Unmarshal(d.Body, &message); err != nil {
-				log.Print(" [a] " + err.Error())
-				continue
-			}
-
-			insertFail := false
-
-			for _, gateway := range message.Gateways {
-				gatewayStart := time.Now()
-				entry := messageToEntry(message, gateway)
-				result, err := stmtIns.Exec(entry)
+			if err != nil {
+				// We only retry on connection errors
+				if err.Error() == "invalid connection" {
+					// Connection to mysql down, retry
+					shouldRetry = true
+				}
+			} else {
+				lastId, err := result.LastInsertId()
 				if err != nil {
+					log.Printf("  [m] Error in insert id")
 					log.Print(err.Error())
-					insertFail = true
-				} else {
-					lastId, err := result.LastInsertId()
-					if err != nil {
-						log.Print(err.Error())
-					}
-
-					rowsAffected, err := result.RowsAffected()
-					if err != nil {
-						log.Print(err.Error())
-					}
-
-					log.Printf("  [m] Inserted entry id=%d (affected %d rows)", lastId, rowsAffected)
-					dbInserts.Inc()
 				}
-				gatewayElapsed := time.Since(gatewayStart)
-				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+
+				rowsAffected, err := result.RowsAffected()
+				if err != nil {
+					log.Printf("  [m] Error in rows affected")
+					log.Print(err.Error())
+				}
+
+				log.Printf("  [m] Inserted experiment packet id=%d (affected %d rows)", lastId, rowsAffected)
+				dbInserts.Inc()
 			}
 
-			if insertFail {
-				time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
-				d.Nack(false, true)
-			} else {
-				d.Ack(false)
-			}
+			gatewayElapsed := time.Since(gatewayStart)
+			inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
+		}
 
+		if shouldRetry {
+			log.Println("  [m] Connection error. Retrying.")
+			time.Sleep(time.Second) // sleep before nack to prevent a flood of messages
+			d.Nack(false, true)
+		} else {
+			d.Ack(false)
 		}
 	}
 }
@@ -420,18 +314,13 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	frequency = frequency / 1000
 	frequency = math.Round(frequency) / 1000
 	entry.Frequency = frequency
-	//log.Printf("Freq: %.4f", entry.Frequency)
+
 	entry.RSSI = gateway.Rssi
 	entry.SNR = gateway.Snr
 
 	entry.Latitude = message.Latitude
 	entry.Longitude = message.Longitude
 	entry.Altitude = message.Altitude
-
-	//hdop := math.Round(message.Hdop*10) / 10
-	//hdop = math.Min(hdop, 99.0)
-	//entry.Hdop = hdop
-	entry.Hdop = message.Hdop
 
 	entry.Accuracy = message.AccuracyMeters
 	entry.Satellites = message.Satellites
@@ -444,8 +333,18 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	entry.ExperimentName = message.Experiment
 	if entry.ExperimentName == "" {
 		entry.Experiment = false
+
+		// HDOP for non experiment is 2.1
+		hdop := math.Round(message.Hdop*10) / 10
+		hdop = math.Min(hdop, 9.9)
+		entry.Hdop = hdop
 	} else {
 		entry.Experiment = true
+
+		// Hdop for experiment 3.1
+		hdop := math.Round(message.Hdop*10) / 10
+		hdop = math.Min(hdop, 99.9)
+		entry.Hdop = hdop
 	}
 
 	return entry
