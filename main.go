@@ -204,13 +204,13 @@ func insertToMysql() {
 
 	stmtInsExperiments, err := db.PrepareNamed("INSERT INTO experiments " +
 		"(time, nodeaddr, appeui, gwaddr, modulation, " +
-		"datarate, snr, rssi, " +
+		"datarate, snr, rssi, fcount, " +
 		"freq, lat, lon, alt, accuracy," +
 		"hdop, sats, provider, user_agent," +
 		"user_id, name) " +
 		"VALUES " +
 		"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-		":datarate, :snr, :rssi, " +
+		":datarate, :snr, :rssi, :fcount, " +
 		":frequency, :latitude, :longitude, :altitude, :accuracy," +
 		":hdop, :satellites, :accuracy_source, :user_agent," +
 		":user_id, :experiment_name)")
@@ -314,6 +314,8 @@ func messageToEntry(message types.TtnMapperUplinkMessage, gateway types.TtnMappe
 	frequency = frequency / 1000
 	frequency = math.Round(frequency) / 1000
 	entry.Frequency = frequency
+
+	entry.FrameCount = uint64(message.FCnt)
 
 	entry.RSSI = gateway.Rssi
 	entry.SNR = gateway.Snr

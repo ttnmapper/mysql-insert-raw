@@ -17,9 +17,10 @@ type MysqlRawPacket struct {
 	Bitrate    uint32 `db:"bitrate"`
 	CodingRate string `db:"coding_rate"`
 
-	SNR       float32 `db:"snr"`
-	RSSI      float32 `db:"rssi"`
-	Frequency float64 `db:"frequency"`
+	SNR        float32 `db:"snr"`
+	RSSI       float32 `db:"rssi"`
+	Frequency  float64 `db:"frequency"`
+	FrameCount uint64  `db:"fcount"`
 
 	Latitude       float64 `db:"latitude"`
 	Longitude      float64 `db:"longitude"`
