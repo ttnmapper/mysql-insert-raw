@@ -187,13 +187,13 @@ func insertToMysql() {
 
 	stmtInsPackets, err := db.PrepareNamed("INSERT INTO packets " +
 		"(time, nodeaddr, appeui, gwaddr, modulation, " +
-		"datarate, snr, rssi, " +
+		"datarate, snr, rssi, fcount, " +
 		"freq, lat, lon, alt, accuracy," +
 		"hdop, sats, provider, user_agent," +
 		"user_id) " +
 		"VALUES " +
 		"(:time, :dev_id, :app_id, :gtw_id, :modulation, " +
-		":datarate, :snr, :rssi, " +
+		":datarate, :snr, :rssi, :fcount, " +
 		":frequency, :latitude, :longitude, :altitude, :accuracy," +
 		":hdop, :satellites, :accuracy_source, :user_agent," +
 		":user_id)")
