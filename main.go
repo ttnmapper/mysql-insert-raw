@@ -26,6 +26,8 @@ type Configuration struct {
 	AmqpPort     string `env:"AMQP_PORT"`
 	AmqpUser     string `env:"AMQP_USER"`
 	AmqpPassword string `env:"AMQP_PASSWORD"`
+	AmqpExchange string `env:"AMQP_EXHANGE"`
+	AmqpQueue    string `env:"AMQP_QUEUE"`
 
 	MysqlHost     string `env:"MYSQL_HOST"`
 	MysqlPort     string `env:"MYSQL_PORT"`
@@ -41,6 +43,8 @@ var myConfiguration = Configuration{
 	AmqpPort:     "5672",
 	AmqpUser:     "user",
 	AmqpPassword: "password",
+	AmqpExchange: "new_packets",
+	AmqpQueue:    "mysql_insert_raw",
 
 	MysqlHost:     "localhost",
 	MysqlPort:     "3306",
@@ -109,23 +113,23 @@ func subscribeToRabbit() {
 	defer ch.Close()
 
 	err = ch.ExchangeDeclare(
-		"new_packets", // name
-		"fanout",      // type
-		true,          // durable
-		false,         // auto-deleted
-		false,         // internal
-		false,         // no-wait
-		nil,           // arguments
+		myConfiguration.AmqpExchange, // name
+		"fanout",                     // type
+		true,                         // durable
+		false,                        // auto-deleted
+		false,                        // internal
+		false,                        // no-wait
+		nil,                          // arguments
 	)
 	failOnError(err, "Failed to declare an exchange")
 
 	q, err := ch.QueueDeclare(
-		"mysql_insert_raw", // name
-		true,               // durable
-		false,              // delete when usused
-		false,              // exclusive
-		false,              // no-wait
-		nil,                // arguments
+		myConfiguration.AmqpQueue, // name
+		true,                      // durable
+		false,                     // delete when usused
+		false,                     // exclusive
+		false,                     // no-wait
+		nil,                       // arguments
 	)
 	failOnError(err, "Failed to declare a queue")
 
@@ -137,9 +141,9 @@ func subscribeToRabbit() {
 	failOnError(err, "Failed to set queue QoS")
 
 	err = ch.QueueBind(
-		q.Name,        // queue name
-		"",            // routing key
-		"new_packets", // exchange
+		q.Name,                       // queue name
+		"",                           // routing key
+		myConfiguration.AmqpExchange, // exchange
 		false,
 		nil)
 	failOnError(err, "Failed to bind a queue")
