@@ -1,5 +1,7 @@
 module ttnmapper-mysql-insert-raw
 
+go 1.14
+
 require (
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-sql-driver/mysql v1.4.1

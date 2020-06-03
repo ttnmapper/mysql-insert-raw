@@ -1,0 +1,12 @@
+{
+  "AmqpHost": "localhost",
+  "AmqpPort": "5672",
+  "AmqpUser": "guest",
+  "AmqpPassword": "guest",
+
+  "MysqlHost": "localhost",
+  "MysqlPort": "3307",
+  "MysqlUser": "ttnmapper",
+  "MysqlPassword": "ttnmapperpassword",
+  "MysqlDatabase": "ttnmapper"
+}
