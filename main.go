@@ -223,6 +223,13 @@ func insertToMysql() {
 	}
 	defer stmtInsExperiments.Close() // Close the statement when we leave main() / the program terminates
 
+	stmtUpdateGatewayLastSeen, err := db.PrepareNamed(
+		"UPDATE `gateways_aggregated` SET `last_heard`=:time WHERE gwaddr=:gtw_id AND last_heard<:time")
+	if err != nil {
+		panic(err.Error()) // proper error handling instead of panic in your app
+	}
+	defer stmtUpdateGatewayLastSeen.Close()
+
 	for {
 		d := <-messageChannel
 		log.Printf(" [m] Processing packet")
@@ -270,7 +277,20 @@ func insertToMysql() {
 					log.Print(err.Error())
 				}
 
-				log.Printf("  [m] Inserted experiment packet id=%d (affected %d rows)", lastId, rowsAffected)
+				log.Printf("  [m] Inserted packet id=%d (affected %d rows)", lastId, rowsAffected)
+
+				result, err = stmtUpdateGatewayLastSeen.Exec(entry)
+				if err != nil {
+					log.Print(err.Error())
+				}
+				rowsAffected, err = result.RowsAffected()
+				if err != nil {
+					log.Print(err.Error())
+				}
+				if rowsAffected > 0 {
+					log.Printf("  [m] Updated gateway %s last seen to %s", entry.GtwId, entry.Time)
+				}
+
 				dbInserts.Inc()
 			}
 
