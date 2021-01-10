@@ -242,60 +242,65 @@ func insertToMysql() {
 
 		shouldRetry := false
 
-		for _, gateway := range message.Gateways {
-			gatewayStart := time.Now()
-			entry := messageToEntry(message, gateway)
+		// Only do the actualy insert if the network is of typ TTNv2.
+		// TODO: What shall we do with TTNv3 messages?
+		if message.NetworkType != types.NS_TTN_V2 {
 
-			if strings.HasPrefix(entry.GtwId, "eui-") {
-				entry.GtwId = strings.ToUpper(entry.GtwId[4:])
+			for _, gateway := range message.Gateways {
+				gatewayStart := time.Now()
+				entry := messageToEntry(message, gateway)
+
+				if strings.HasPrefix(entry.GtwId, "eui-") {
+					entry.GtwId = strings.ToUpper(entry.GtwId[4:])
+				}
+
+				var result sql.Result
+				var err error
+				if entry.Experiment {
+					result, err = stmtInsExperiments.Exec(entry)
+				} else {
+					result, err = stmtInsPackets.Exec(entry)
+				}
+
+				if err != nil {
+					// We only retry on connection errors
+					if err.Error() == "invalid connection" {
+						// Connection to mysql down, retry
+						shouldRetry = true
+					}
+				} else {
+					lastId, err := result.LastInsertId()
+					if err != nil {
+						log.Printf("  [m] Error in insert id")
+						log.Print(err.Error())
+					}
+
+					rowsAffected, err := result.RowsAffected()
+					if err != nil {
+						log.Printf("  [m] Error in rows affected")
+						log.Print(err.Error())
+					}
+
+					log.Printf("  [m] Inserted packet id=%d (affected %d rows)", lastId, rowsAffected)
+
+					result, err = stmtUpdateGatewayLastSeen.Exec(entry)
+					if err != nil {
+						log.Print(err.Error())
+					}
+					rowsAffected, err = result.RowsAffected()
+					if err != nil {
+						log.Print(err.Error())
+					}
+					if rowsAffected > 0 {
+						log.Printf("  [m] Updated gateway %s last seen to %s", entry.GtwId, entry.Time)
+					}
+
+					dbInserts.Inc()
+				}
+
+				gatewayElapsed := time.Since(gatewayStart)
+				inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
 			}
-
-			var result sql.Result
-			var err error
-			if entry.Experiment {
-				result, err = stmtInsExperiments.Exec(entry)
-			} else {
-				result, err = stmtInsPackets.Exec(entry)
-			}
-
-			if err != nil {
-				// We only retry on connection errors
-				if err.Error() == "invalid connection" {
-					// Connection to mysql down, retry
-					shouldRetry = true
-				}
-			} else {
-				lastId, err := result.LastInsertId()
-				if err != nil {
-					log.Printf("  [m] Error in insert id")
-					log.Print(err.Error())
-				}
-
-				rowsAffected, err := result.RowsAffected()
-				if err != nil {
-					log.Printf("  [m] Error in rows affected")
-					log.Print(err.Error())
-				}
-
-				log.Printf("  [m] Inserted packet id=%d (affected %d rows)", lastId, rowsAffected)
-
-				result, err = stmtUpdateGatewayLastSeen.Exec(entry)
-				if err != nil {
-					log.Print(err.Error())
-				}
-				rowsAffected, err = result.RowsAffected()
-				if err != nil {
-					log.Print(err.Error())
-				}
-				if rowsAffected > 0 {
-					log.Printf("  [m] Updated gateway %s last seen to %s", entry.GtwId, entry.Time)
-				}
-
-				dbInserts.Inc()
-			}
-
-			gatewayElapsed := time.Since(gatewayStart)
-			inserDuration.Observe(float64(gatewayElapsed.Nanoseconds()) / 1000.0 / 1000.0) //nanoseconds to milliseconds
 		}
 
 		if shouldRetry {
