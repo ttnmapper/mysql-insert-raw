@@ -242,9 +242,9 @@ func insertToMysql() {
 
 		shouldRetry := false
 
-		// Only do the actualy insert if the network is of typ TTNv2.
+		// Only do the actually insert if the network is of type TTNv2.
 		// TODO: What shall we do with TTNv3 messages?
-		if message.NetworkType != types.NS_TTN_V2 {
+		if message.NetworkType == types.NS_TTN_V2 {
 
 			for _, gateway := range message.Gateways {
 				gatewayStart := time.Now()
