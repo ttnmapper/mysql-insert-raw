@@ -108,6 +108,9 @@ func subscribeToRabbit() {
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
+	// Create a channel for errors
+	notify := conn.NotifyClose(make(chan *amqp.Error)) //error channel
+
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer ch.Close()
@@ -159,17 +162,21 @@ func subscribeToRabbit() {
 	)
 	failOnError(err, "Failed to register a consumer")
 
-	forever := make(chan bool)
-
-	go func() {
-		for d := range msgs {
+waitForMessages:
+	for {
+		select {
+		case err := <-notify:
+			if err != nil {
+				log.Println(err.Error())
+			}
+			break waitForMessages
+		case d := <-msgs:
 			log.Print(" [a] Packet received")
 			messageChannel <- d
 		}
-	}()
+	}
 
-	log.Printf(" [a] Waiting for packets. To exit press CTRL+C")
-	<-forever
+	log.Fatal("Subscribe channel closed")
 
 }
 
