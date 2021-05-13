@@ -244,6 +244,8 @@ func insertToMysql() {
 		var message types.TtnMapperUplinkMessage
 		if err := json.Unmarshal(d.Body, &message); err != nil {
 			log.Print(" [a] " + err.Error())
+			log.Printf(" [a] Message: %s", string(d.Body))
+			d.Ack(false) // Prevent infinite loop of invalid message
 			continue
 		}
 
