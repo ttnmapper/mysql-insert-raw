@@ -172,6 +172,9 @@ waitForMessages:
 			break waitForMessages
 		case d := <-msgs:
 			log.Print(" [a] Packet received")
+			if d.Body == nil {
+				log.Fatal("Message Body is NIL")
+			}
 			messageChannel <- d
 		}
 	}
